@@ -1,0 +1,49 @@
+#!/usr/bin/env python
+
+import os
+import cgi
+import json
+import datetime
+
+INPUT_FILE = '/var/www/jnmailbox/data.csv'
+ACK_FILE = '/var/www/jnmailbox/jn_mailbox.ack'
+
+def printJSON():
+    print "Content-type: application/json"
+    print ""
+    form = cgi.FieldStorage()
+    if 'ack' in form and form['ack']:
+        response = {'needs-ack': False}
+        try:
+            if os.path.isfile(ACK_FILE):
+                os.unlink(ACK_FILE)
+            now = datetime.datetime.now()
+            outf = open(INPUT_FILE, 'a')
+	    outf.write(str(now) + ',message: ack' + os.linesep)
+            outf.close()
+        except Exception, e:
+            response['needs-ack'] = True
+            response['error'] = True
+            response['message'] = str(e)
+        print(json.JSONEncoder().encode(response))
+        return
+    response = {'data': [], 'needs-ack': False}
+    if os.path.isfile(ACK_FILE):
+        response['needs-ack'] = True
+    debug = False
+    if 'debug' in form and form['debug']:
+        debug = True
+    with open(INPUT_FILE) as fd:
+        for line in fd:
+            lsplit = line.split(',')
+            if len(lsplit) != 2: continue
+            dt = lsplit[0]
+            msg = lsplit[1].strip()
+            if not ('message' in msg or debug): continue
+            response['data'].append({'datetime': dt, 'message': msg})
+    print(json.JSONEncoder().encode(response))
+
+
+if __name__ == '__main__':
+    printJSON()
+

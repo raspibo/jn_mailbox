@@ -1,0 +1,106 @@
+#!/usr/bin/env python
+"""
+jn_mailbox_daemon: continuously read from a JeeLink used as a receiver
+for the messages from the JeeNode Micro in our mailbox.
+
+The MIT License (MIT)
+
+Copyright (c) 2014 Davide Alberani
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+"""
+
+
+import os
+import re
+import glob
+import serial
+import logging
+import logging.handlers
+import datetime
+
+from daemon import runner
+
+
+PORTS_GLOB = '/dev/ttyUSB*'
+PORTS_LIST = glob.glob(PORTS_GLOB)
+PORT_BAUD = 57600
+
+CSV_OUTPUT = '/var/www/jnmailbox/data.csv'
+PID_FILE = '/var/run/jn_mailbox_daemon.pid'
+ACK_FILE = '/var/www/jnmailbox/jn_mailbox.ack'
+
+# User and group ID of the ACK_FILE file.
+# it should be editable/removed by the web server.
+ACK_FILE_UID = 33
+ACK_FILE_GID = 33
+
+
+logger = logging.getLogger('jn_server')
+logger.setLevel(logging.INFO)
+handler = logging.handlers.SysLogHandler(address = '/dev/log')
+logger.addHandler(handler)
+
+re_valid_chars = re.compile('[^0-9a-zA-Z_\s\ :-]+')
+
+def getPort():
+    if PORTS_LIST:
+        return PORTS_LIST[0]
+    return None
+
+class App():
+    def __init__(self):
+        self.stdin_path = '/dev/null'
+        self.stdout_path = '/dev/tty'
+        self.stderr_path = '/dev/tty'
+        self.pidfile_path =  PID_FILE
+        self.pidfile_timeout = 5
+
+    def run(self):
+        port = getPort()
+        if not port:
+            logger.error('unable to find a valid device')
+            return
+        ser = serial.Serial(port=port, baudrate=PORT_BAUD)
+        outf = open(CSV_OUTPUT, 'a')
+        while True:
+            line = ser.readline().strip()
+            date = datetime.datetime.now()
+            line = re_valid_chars.sub('', line)
+            msg = ','.join([str(date), line]) + os.linesep
+            logging.debug(msg.strip())
+            try:
+                outf.write(msg)
+                outf.flush()
+            except Exception, e:
+                logging.error('error writing file %s: %s', CSV_OUTPUT, e)
+                continue
+            if 'message' in msg and 'open' in msg:
+                try:
+                    open(ACK_FILE, 'a').close()
+                    os.chown(ACK_FILE, ACK_FILE_UID, ACK_FILE_GID)
+                    os.chmod(ACK_FILE, 0666)
+                except Exception, e:
+                    logging.error('error writing file %s: %s', ACK_FILE, e)
+
+if __name__ == '__main__':
+    app = App()
+    daemon_runner = runner.DaemonRunner(app)
+    daemon_runner.do_action()
+

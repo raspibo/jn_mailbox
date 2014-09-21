@@ -1,0 +1,5 @@
+check process jn_mailbox_daemon with pidfile /var/run/jn_mailbox_daemon.pid
+	start program  "/etc/init.d/jn_mailbox_daemon start"
+	stop program  "/etc/init.d/jn_mailbox_daemon stop"
+	if 5 restarts within 5 cycles then timeout
+

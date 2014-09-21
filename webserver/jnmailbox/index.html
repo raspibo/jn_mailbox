@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>JN Mailbox</title>
+  <link rel="stylesheet" type="text/css" href="//cdn.datatables.net/1.10.2/css/jquery.dataTables.css">
+  <script type="text/javascript" charset="utf8" src="//code.jquery.com/jquery-1.10.2.min.js"></script>
+  <script src="//cdn.datatables.net/1.10.2/js/jquery.dataTables.js"></script>
+  <style>
+
+#ack {
+	display: none;
+}
+
+#history-section {
+	width: 30%;
+}
+  </style>
+  <script language="JavaScript">
+
+function initTable(data) {
+	var history = $('#history');
+	if ($.fn.DataTable.fnIsDataTable(history)) {
+		var dt = history.dataTable();
+		dt.fnClearTable();
+		dt.fnAddData(data);
+		return;
+	}
+	$('#history').dataTable({
+		data: data,
+		columns: [{data: 'datetime'}, {data: 'message'}],
+		order: [[0, 'desc']],
+		sDom: '<"H"r>t<"F"ip>'
+	});
+}
+
+
+function loadData() {
+	data = {};
+	if ($('#debug').is(':checked')) {
+		data['debug'] = true;
+	}
+	$.ajax({
+		url: '/cgi-bin/jn_mailbox_serve_data',
+		data: data,
+		cache: false,
+		success: function(data, textStatus, jqXHR) {
+			initTable(data.data);
+			if (data['needs-ack']) {
+				$('#ack').show();
+				$('#current-status').text('full');
+			}
+			if (data.error) {
+				alert('ERROR: ' + data.message);
+			}
+		},
+		error: function(jqXHR, textStatus, errorThrown) {
+			alert('ERROR: ' + textStatus);
+		}
+	});
+}
+
+
+function ack() {
+	$.ajax({
+		url: '/cgi-bin/jn_mailbox_serve_data',
+		data: {ack: true},
+		cache: false,
+		success: function(data, textStatus, jqXHR) {
+			$('#ack').hide();
+			$('#current-status').text('empty');
+			if (data.error) {
+				alert('ERROR: ' + data.message);
+			} else {
+				loadData();
+			}
+		},
+		error: function(jqXHR, textStatus, errorThrown) {
+			alert('ERROR: ' + textStatus);
+		}
+	});
+}
+
+$(document).ready(function() {
+	$('#ack').hide();
+	$('#debug').change(loadData);
+	$('#ack').click(ack);
+	loadData();
+});
+
+  </script>
+</head>
+
+<body>
+<h1>JN Mailbox</h1>
+
+<div id="current-status-section">
+	<label id="current-status-label">Current status:</label>&nbsp;<span id="current-status">empty</span>&nbsp;<span id="ack">(<a href="#" name="ack-a">ACK</a>)</span>
+</div>
+<p></p>
+
+<div id="history-section">
+<h3>History</h3>
+<table id="history" name="histoy" class="display" cellspacing="0" width="100%">
+<thead>
+  <tr>
+    <th>Time</th>
+    <th>Status</th>
+  </tr>
+</thead>
+<tbody>
+</tbody>
+</table>
+</div>
+<input type="checkbox" id="debug">Show debug messages</input>
+
+</body>
+</html>
+
